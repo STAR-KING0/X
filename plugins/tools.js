@@ -1,0 +1,244 @@
+const { haki, qrcode, isUrl, Bitly, removeBg, tinyurl, ssweb, shortenurl, upload, IronMan, convertInputsToPDF, getJson } = require('../utils');
+const config = require('../config');
+
+haki(
+ {
+  pattern: 'qr ?(.*)',
+  fromMe: false,
+  desc: 'Read/Write Qr.',
+  type: 'tools',
+ },
+ async (message, match, m) => {
+  match = match || message.reply_message?.text;
+  if (match) {
+   const buff = await qrcode(match);
+   await message.send(buff, {}, 'image');
+  } else if (message.reply_message?.image) {
+   const buffer = await m.quoted.download();
+   const data = await readQr(buffer);
+   await message.send(data);
+  } else {
+   await message.reply(`\`\`\`Wrong Format\`\`\`\n\n${message.prefix}qr (Replied Image)\n\n${message.prefix}qr (text)`);
+  }
+ }
+);
+
+haki(
+ {
+  pattern: 'bitly ?(.*)',
+  fromMe: false,
+  desc: 'Converts Url to bitly',
+  type: 'tools',
+ },
+ async (message, match) => {
+  match = match || message.reply_message.text;
+  if (!match) return await message.reply('_Reply to a url or enter a url_');
+  if (!isUrl(match)) return await message.reply('_Not a url_');
+  const short = await Bitly(match);
+  return await message.reply(short.link);
+ }
+);
+
+haki(
+ {
+  pattern: 'rmbg ?(.*)',
+  fromMe: false,
+  desc: 'Remove background of an image',
+  type: 'tools',
+ },
+ async (message, match, m) => {
+  if (!config.RMBG_API_KEY) return await message.reply('_API key not Set!_');
+  if (!message.reply_message?.image) return await message.reply('Reply to an image');
+  const msg = await message.reply('_Processing Image!_');
+  const buff = await m.quoted.download();
+  const buffer = await removeBg(buff);
+  await msg.edit('*_Operation Success_*');
+  await message.send(buffer);
+ }
+);
+
+haki(
+ {
+  pattern: 'tiny ?(.*)',
+  fromMe: false,
+  desc: 'Shortens Link with TinyURL',
+  type: 'tools',
+ },
+ async (message, match) => {
+  match = match || message.reply_message.text;
+  if (!match) return await message.reply(`\`\`\`Wrong format\n\n${message.prefix}tinyurl URL\n\nOR REPLY A MESSAGE\`\`\``);
+  if (!isUrl(match)) return await message.reply('_Invalid URL_');
+  const msg = await message.reply('_Shortening Link_');
+  const shortenText = await tinyurl(match);
+  await msg.edit('*_Operation Success_*');
+  return await message.send(shortenText);
+ }
+);
+
+haki(
+ {
+  pattern: 'ssweb ?(.*)',
+  fromMe: false,
+  desc: 'Screenshot Websites',
+  type: 'tools',
+ },
+ async (message, match) => {
+  if (!match) return await message.reply('_Provide URL_');
+  if (!isUrl(match)) return await message.reply('_Not A URL_');
+  const msg = await message.reply('_Processing URL_');
+  const buff = await ssweb(match);
+  await msg.edit('*_Success_*');
+  return await message.send(buff);
+ }
+);
+
+haki(
+ {
+  pattern: 'url ?(.*)',
+  fromMe: false,
+  desc: 'Shortens link URL',
+  type: 'tools',
+ },
+ async (message, match) => {
+  if (!match) return await message.reply('_Provide URL_');
+  if (!isUrl(match)) return await message.reply('_Not A URL_');
+  const msg = await message.reply('_Shortening Link_');
+  const shortenedTxt = await shortenurl(match);
+  await msg.edit('*_Success_*');
+  return await message.send(shortenedTxt);
+ }
+);
+
+haki(
+ {
+  pattern: 'upload ?(.*)',
+  fromMe: false,
+  desc: 'Uploads Image',
+  type: 'tools',
+ },
+ async (message, match, m) => {
+  if (!message.reply_message) return await message.reply('_Reply Image_');
+  const msg = await message.reply('_Uploading File_');
+  const buff = await m.quoted.download();
+  const url = await upload(buff);
+  return await msg.edit(`*IMAGE UPLOADED: ${url}*`);
+ }
+);
+
+haki(
+ {
+  pattern: 'time ?(.*)',
+  fromMe: false,
+  desc: 'Find Time',
+  type: 'tools',
+ },
+ async (message, match) => {
+  if (!match) return await message.reply('*Need a place name to know time*\n_Example: .time japan_');
+  var p = match.toLowerCase();
+  const res = await fetch(IronMan(`ironman/search/time?loc=${p}`));
+  const data = await res.json();
+  if (data.error === 'no place') return await message.send('_*No place found*_');
+  const { name, state, tz, capital, currCode, currName, phone } = data;
+  const now = new Date();
+  const format12hrs = { timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true };
+  const format24hrs = { timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+  const time12 = new Intl.DateTimeFormat('en-US', format12hrs).formatToParts(now);
+  const time24 = new Intl.DateTimeFormat('en-US', format24hrs).formatToParts(now);
+  const milliseconds = now.getMilliseconds().toString().padStart(3, '0');
+  let time12WithMs = '';
+  time12.forEach(({ type, value }) => {
+   if (type === 'dayPeriod') {
+    time12WithMs += `:${milliseconds} ${value}`;
+   } else {
+    time12WithMs += value;
+   }
+  });
+  const time24WithMs = time24.map(({ value }) => value).join('') + `:${milliseconds}`;
+  let msg = `*ᴄᴜʀʀᴇɴᴛ ᴛɪᴍᴇ*\n(12-hour format): ${time12WithMs}\n(24-hour format): ${time24WithMs}\n`;
+  msg += `*ʟᴏᴄᴀᴛɪᴏɴ:* ${name}\n`;
+  if (state) {
+   msg += `*ꜱᴛᴀᴛᴇ:* ${state}\n`;
+  }
+  msg += `*ᴄᴀᴘɪᴛᴀʟ:* ${capital}\n`;
+  msg += `*ᴄᴜʀʀᴇɴᴄʏ:* ${currName} (${currCode})\n`;
+  msg += `*ᴘʜᴏɴᴇ ᴄᴏᴅᴇ:* +${phone}`;
+  await message.reply(msg);
+ }
+);
+
+haki(
+ {
+  pattern: 'wame ?(.*)',
+  fromMe: false,
+  desc: 'wame generator',
+  type: 'tools',
+ },
+ async (message, match, m, client) => {
+  const quotedMessage = message.reply_message?.sender || message.mention?.[0];
+  if (!quotedMessage) return await message.send('_*Reply to a user*_');
+  const senderNumber = quotedMessage.split('@')[0];
+  const wameLink = 'https://wa.me/' + senderNumber;
+  return await message.send(wameLink);
+ }
+);
+
+haki(
+ {
+  pattern: 'topdf',
+  fromMe: false,
+  info: 'Converts Text/Image to PDF',
+  type: 'tools',
+ },
+ async (message, match, m, client) => {
+  const text = match;
+  let pdfBuffer;
+  let imageBuffer = m.quoted ? await m.quoted.download() : null;
+  if (text) {
+   pdfBuffer = await convertInputsToPDF(text, 'text');
+   await message.sendMessage(message.jid, pdfBuffer, { mimetype: 'application/pdf', fileName: `Generated by fxoprisa` }, 'document');
+  } else if (imageBuffer) {
+   pdfBuffer = await convertInputsToPDF(imageBuffer, 'image');
+   await message.sendMessage(message.jid, pdfBuffer, { mimetype: 'application/pdf', fileName: `Generated by fxoprisa` }, 'document');
+  } else {
+   await message.sendMessage(message.jid, '_Provide text or quote an image to convert to PDF._');
+  }
+ }
+);
+
+haki(
+ {
+  pattern: 'obfuscate',
+  fromMe: false,
+  desc: 'Obfuscates Javascript to Non-human-readable ',
+  type: 'download',
+ },
+ async (message, match, m, client) => {
+  const reqCode = match || message.reply_message?.text || m.quoted?.text;
+  if (!reqCode) return await message.send('_Provide or Reply to a Message with JS Code_');
+  const response = await getJson('https://giftedapis.us.kg/api/tools/encrypt?code=' + encodeURIComponent(reqCode) + '&apikey=gifted');
+  return await message.send(response.encrypted_code);
+ }
+);
+smd({
+  pattern: "readmore",
+  desc: "Adds *readmore* in given text.",
+  type: "tools",
+  fromMe: true,
+  filename: __filename
+}, async (_0x5db0de, _0x38fb87) => {
+  try {
+    let _0x5ea4b8 = _0x38fb87 ? _0x38fb87 : _0x5db0de.reply_text;
+    if (!_0x5ea4b8) {
+      _0x5ea4b8 = "*Uhh Dear,Please provide text*\n*Eg:- _.readmor text1 readmore text2_*";
+    } else {
+      _0x5ea4b8 += " ";
+    }
+    if (_0x5ea4b8.includes("readmore")) {
+      await _0x5db0de.reply(_0x5ea4b8.replace(/readmore/, String.fromCharCode(8206).repeat(4001)));
+    } else {
+      await _0x5db0de.reply(_0x5ea4b8.replace(" ", String.fromCharCode(8206).repeat(4001)));
+    }
+  } catch (_0x36cb2c) {
+    await _0x5db0de.error(_0x36cb2c + "\n\ncommand : readmore", _0x36cb2c, false);
+  }
+});
